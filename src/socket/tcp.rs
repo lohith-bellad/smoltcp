@@ -15,6 +15,7 @@ use crate::wire::{
     IpAddress, IpEndpoint, IpProtocol, IpRepr, TcpControl, TcpRepr, TcpSeqNumber, TCP_HEADER_LEN,
 };
 use crate::{Error, Result};
+use std::time::SystemTime;
 
 /// A TCP socket ring buffer.
 pub type SocketBuffer<'a> = RingBuffer<'a, u8>;
@@ -99,11 +100,13 @@ impl RttEstimator {
     fn retransmission_timeout(&self) -> Duration {
         let margin = RTTE_MIN_MARGIN.max(self.deviation * 4);
         let ms = (self.rtt + margin).max(RTTE_MIN_RTO).min(RTTE_MAX_RTO);
+        println!("Lohith rto: {:?}, rtt = {:?}", Duration::from_millis(ms as u64), self.rtt);
         Duration::from_millis(ms as u64)
     }
 
     fn sample(&mut self, new_rtt: u32) {
         // "Congestion Avoidance and Control", Van Jacobson, Michael J. Karels, 1988
+        println!("Lohith_r rtt: {:?}", new_rtt);
         self.rtt = (self.rtt * 7 + new_rtt + 7) / 8;
         let diff = (self.rtt as i32 - new_rtt as i32).abs() as u32;
         self.deviation = (self.deviation * 3 + diff + 3) / 4;
@@ -121,6 +124,7 @@ impl RttEstimator {
     }
 
     fn on_send(&mut self, timestamp: Instant, seq: TcpSeqNumber) {
+        println!("Lohith_s: Sending seq {:?} at {:?}", seq, timestamp);
         if self
             .max_seq_sent
             .map(|max_seq_sent| seq > max_seq_sent)
@@ -136,6 +140,7 @@ impl RttEstimator {
 
     fn on_ack(&mut self, timestamp: Instant, seq: TcpSeqNumber) {
         if let Some((sent_timestamp, sent_seq)) = self.timestamp {
+            println!("Lohith_r: recevied_seq = {:?}, last = {:?}", seq, sent_seq);
             if seq >= sent_seq {
                 self.sample((timestamp - sent_timestamp).millis() as u32);
                 self.timestamp = None;
@@ -144,6 +149,7 @@ impl RttEstimator {
     }
 
     fn on_retransmit(&mut self) {
+        println!("Retransmitting");
         if self.timestamp.is_some() {
             net_trace!("rtte: abort sampling due to retransmit");
         }
@@ -380,6 +386,10 @@ pub struct TcpSocket<'a> {
     /// Nagle's Algorithm enabled.
     nagle: bool,
 
+    inflight: i64,
+    last_received_ack: TcpSeqNumber,
+    start_time: Option<SystemTime>,
+
     #[cfg(feature = "async")]
     rx_waker: WakerRegistration,
     #[cfg(feature = "async")]
@@ -398,6 +408,7 @@ impl<'a> TcpSocket<'a> {
         let (rx_buffer, tx_buffer) = (rx_buffer.into(), tx_buffer.into());
         let rx_capacity = rx_buffer.capacity();
 
+        println!("Creating tcp socket");
         // From RFC 1323:
         // [...] the above constraints imply that 2 * the max window size must be less
         // than 2**31 [...] Thus, the shift count must be limited to 14 (which allows
@@ -439,6 +450,9 @@ impl<'a> TcpSocket<'a> {
             ack_delay: Some(ACK_DELAY_DEFAULT),
             ack_delay_until: None,
             nagle: true,
+            inflight: 0,
+            last_received_ack: INITIAL_SEQ_NO,
+            start_time: None,
 
             #[cfg(feature = "async")]
             rx_waker: WakerRegistration::new(),
@@ -718,6 +732,7 @@ impl<'a> TcpSocket<'a> {
         let remote_endpoint = remote_endpoint.into();
         let local_endpoint = local_endpoint.into();
 
+        println!("remote = {:?}, local = {:?}", remote_endpoint, local_endpoint);
         if self.is_open() {
             return Err(Error::Illegal);
         }
@@ -1261,6 +1276,10 @@ impl<'a> TcpSocket<'a> {
     ) -> Result<Option<(IpRepr, TcpRepr<'static>)>> {
         debug_assert!(self.accepts(ip_repr, repr));
 
+        if self.start_time.is_none() {
+            self.start_time = Some(SystemTime::now());
+        }
+
         // Consider how much the sequence number space differs from the transmit buffer space.
         let (sent_syn, sent_fin) = match self.state {
             // In SYN-SENT or SYN-RECEIVED, we've just sent a SYN.
@@ -1521,6 +1540,11 @@ impl<'a> TcpSocket<'a> {
                 }
 
                 self.rtte.on_ack(cx.now, ack_number);
+                self.inflight -= (ack_number - self.last_received_ack) as i64;
+                self.last_received_ack = ack_number;
+                if let Some(time) = self.start_time {
+                    println!("Lohith_i {:?} {:?}", self.inflight, time.elapsed().unwrap());
+                }
             }
         }
 
@@ -2027,7 +2051,14 @@ impl<'a> TcpSocket<'a> {
     where
         F: FnOnce((IpRepr, TcpRepr)) -> Result<()>,
     {
+        if self.start_time.is_none() {
+            self.start_time = Some(SystemTime::now());
+        }
         if !self.remote_endpoint.is_specified() {
+            return Err(Error::Exhausted);
+        }
+
+        if self.inflight >= 7500 {
             return Err(Error::Exhausted);
         }
 
@@ -2249,6 +2280,11 @@ impl<'a> TcpSocket<'a> {
             is_keep_alive = true;
         } else {
             is_keep_alive = false;
+        }
+
+        self.inflight += repr.payload.len() as i64;
+        if let Some(time) = self.start_time {
+            println!("Lohith_i {:?} {:?}", self.inflight, time.elapsed().unwrap());
         }
 
         // Trace a summary of what will be sent.

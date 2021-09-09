@@ -753,6 +753,7 @@ where
                 }
                 #[cfg(feature = "socket-tcp")]
                 Socket::Tcp(ref mut socket) => {
+                    println!("Lohith: socket_egress calling tcp dispatch");
                     socket.dispatch(cx, |response| respond!(IpPacket::Tcp(response)))
                 }
                 #[cfg(feature = "socket-dhcpv4")]
@@ -763,6 +764,7 @@ where
                 }
             };
 
+            println!("{:?}", socket_result);
             match (device_result, socket_result) {
                 (Err(Error::Exhausted), _) => break,   // nowhere to transmit
                 (Ok(()), Err(Error::Exhausted)) => (), // nothing to transmit
