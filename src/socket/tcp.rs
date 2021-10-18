@@ -398,6 +398,7 @@ impl<'a> TcpSocket<'a> {
         let (rx_buffer, tx_buffer) = (rx_buffer.into(), tx_buffer.into());
         let rx_capacity = rx_buffer.capacity();
 
+        println!("Lohith rx buffer capacity {:?}", rx_capacity);
         // From RFC 1323:
         // [...] the above constraints imply that 2 * the max window size must be less
         // than 2**31 [...] Thus, the shift count must be limited to 14 (which allows
@@ -515,6 +516,7 @@ impl<'a> TcpSocket<'a> {
     ///
     #[inline]
     fn scaled_window(&self) -> u16 {
+        println!("Loki: {:?}", self.rx_buffer.window());
         cmp::min(
             self.rx_buffer.window() >> self.remote_win_shift as usize,
             (1 << 16) - 1,
@@ -1490,7 +1492,8 @@ impl<'a> TcpSocket<'a> {
                         self.timer.set_for_close(cx.now);
                     }
 
-                    return Ok(Some(self.ack_reply(ip_repr, repr)));
+                    return Ok(None);
+                    //return Ok(Some(self.ack_reply(ip_repr, repr)));
                 }
             }
         }
@@ -2157,6 +2160,7 @@ impl<'a> TcpSocket<'a> {
             payload: &[],
         };
 
+        println!("Lohith: window_len = {:?}", self.scaled_window());
         match self.state {
             // We transmit an RST in the CLOSED state. If we ended up in the CLOSED state
             // with a specified endpoint, it means that the socket was aborted.
