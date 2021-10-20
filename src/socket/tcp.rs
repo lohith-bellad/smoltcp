@@ -1237,11 +1237,12 @@ impl<'a> TcpSocket<'a> {
         repr: &TcpRepr,
     ) -> Option<(IpRepr, TcpRepr<'static>)> {
         if cx.now < self.challenge_ack_timer {
+            println!("Skipping challenge ACK");
             return None;
         }
 
         // Rate-limit to 1 per second max.
-        self.challenge_ack_timer = cx.now + Duration::from_secs(1);
+        self.challenge_ack_timer = cx.now + Duration::from_secs(3);
 
         return Some(self.ack_reply(ip_repr, repr));
     }
