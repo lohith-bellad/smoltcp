@@ -1603,7 +1603,8 @@ impl<'a> TcpSocket<'a> {
                 self.local_seq_no = Self::random_seq_no();
                 self.remote_seq_no = repr.seq_number + 1;
                 self.remote_last_seq = self.local_seq_no;
-                self.remote_has_sack = repr.sack_permitted;
+               // self.remote_has_sack = repr.sack_permitted;
+                self.remote_has_sack = false;
                 self.remote_win_scale = repr.window_scale;
                 // Remote doesn't support window scaling, don't do it.
                 if self.remote_win_scale.is_none() {
@@ -2229,7 +2230,7 @@ impl<'a> TcpSocket<'a> {
                 if self.state == State::SynSent {
                     repr.ack_number = None;
                     repr.window_scale = Some(self.remote_win_shift);
-                    repr.sack_permitted = true;
+                    repr.sack_permitted = false;
                 } else {
                     repr.sack_permitted = self.remote_has_sack;
                     repr.window_scale = self.remote_win_scale.map(|_| self.remote_win_shift);
